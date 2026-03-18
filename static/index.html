@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מחשבון המרה משכירות למשכנתא | Rent or Buy</title>
+<meta name="description" content="גלו בדיוק איזה נכס אתם יכולים לרכוש בהחזר חודשי זהה לשכירות שלכם. מחשבון חכם וחינמי.">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Heebo', 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    background: linear-gradient(170deg, #f0f7ff 0%, #ecfdf5 40%, #f8fafc 100%);
+    -webkit-font-smoothing: antialiased;
+  }
+  input[type="range"] { -webkit-appearance: none; appearance: none; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; cursor: pointer; }
+  input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; cursor: pointer; border: none; background: transparent; }
+  input[type="range"]:focus { outline: none; }
+  button:active { transform: scale(0.98) !important; }
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes scaleIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+  .fade-in-1 { animation: fadeInUp 0.5s ease-out both; }
+  .fade-in-2 { animation: fadeInUp 0.6s ease-out both; }
+  .fade-in-3 { animation: fadeInUp 0.7s ease-out both; }
+  .fade-in-4 { animation: fadeInUp 0.8s ease-out both; }
+  .modal-anim { animation: scaleIn 0.3s ease-out both; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ──────────── Constants ────────────
+const ANNUAL_RATE = 0.045;
+const MONTHLY_RATE = ANNUAL_RATE / 12;
+const LOAN_YEARS = 30;
+const TOTAL_MONTHS = LOAN_YEARS * 12;
+const MAX_RATIO = 0.35;
+const ANNUAL_APPRECIATION = 0.03;
+
+const fmt = (n) => new Intl.NumberFormat("he-IL", { style: "currency", currency: "ILS", maximumFractionDigits: 0 }).format(n);
+const fmtShort = (n) => {
+  if (n >= 1_000_000) return `₪${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `₪${(n / 1_000).toFixed(0)}K`;
+  return fmt(n);
+};
+
+function calcMaxLoan(mp) {
+  if (mp <= 0) return 0;
+  return mp * ((1 - Math.pow(1 + MONTHLY_RATE, -TOTAL_MONTHS)) / MONTHLY_RATE);
+}
+
+function calcEquity5yr(loan, mp, years) {
+  let bal = loan, tot = 0;
+  for (let m = 0; m < years * 12; m++) {
+    const interest = bal * MONTHLY_RATE;
+    const princ = mp - interest;
+    if (princ <= 0) break;
+    tot += princ;
+    bal -= princ;
+  }
+  return tot;
+}
+
+// ──────────── AnimatedNumber ────────────
+function AnimatedNumber({ value }) {
+  const [disp, setDisp] = useState(value);
+  const anim = useRef(null);
+  const prev = useRef(value);
+
+  useEffect(() => {
+    const s = prev.current, e = value, dur = 500, t0 = performance.now();
+    if (anim.current) cancelAnimationFrame(anim.current);
+    const tick = (now) => {
+      const p = Math.min((now - t0) / dur, 1);
+      const ease = 1 - Math.pow(1 - p, 3);
+      setDisp(Math.round(s + (e - s) * ease));
+      if (p < 1) anim.current = requestAnimationFrame(tick);
+      else prev.current = e;
+    };
+    anim.current = requestAnimationFrame(tick);
+    return () => { if (anim.current) cancelAnimationFrame(anim.current); };
+  }, [value]);
+
+  return <span>{fmt(disp)}</span>;
+}
+
+// ──────────── Slider ────────────
+function Slider({ label, emoji, value, onChange, min, max, step }) {
+  const pct = ((value - min) / (max - min)) * 100;
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: "#475569", display: "flex", alignItems: "center", gap: 6 }}>
+          {emoji} {label}
+        </span>
+        <span style={{ fontSize: 18, fontWeight: 800, background: "linear-gradient(135deg, #0f4c81, #10b981)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+          {fmt(value)}
+        </span>
+      </div>
+      <div style={{ position: "relative", height: 44, display: "flex", alignItems: "center" }}>
+        <div style={{ position: "absolute", left: 0, right: 0, height: 10, borderRadius: 5, background: "#e2e8f0", overflow: "hidden" }}>
+          <div style={{ width: `${pct}%`, height: "100%", borderRadius: 5, background: "linear-gradient(90deg, #0f4c81, #10b981)", transition: "width 0.1s" }} />
+        </div>
+        <input type="range" min={min} max={max} step={step} value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          style={{ position: "absolute", left: 0, right: 0, width: "100%", height: 44, opacity: 0, cursor: "pointer", zIndex: 10 }} />
+        <div style={{
+          position: "absolute", width: 26, height: 26, borderRadius: "50%",
+          background: "#fff", border: "3px solid #10b981",
+          boxShadow: "0 2px 10px rgba(16,185,129,0.35)",
+          pointerEvents: "none", transition: "left 0.1s",
+          left: `calc(${pct}% - 13px)`
+        }} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+        <span>{fmtShort(min)}</span><span>{fmtShort(max)}</span>
+      </div>
+    </div>
+  );
+}
+
+// ──────────── EquityChart ────────────
+function EquityChart({ equity5yr, rent5yr, appreciation5yr }) {
+  const total = equity5yr + appreciation5yr;
+  const maxVal = Math.max(total, rent5yr, 1);
+
+  const Bar = ({ pct, gradient, children }) => (
+    <div style={{ height: 36, background: "#f1f5f9", borderRadius: 10, overflow: "hidden", position: "relative" }}>
+      <div style={{
+        height: "100%", borderRadius: 10, display: "flex", alignItems: "center",
+        width: `${Math.max(pct, 12)}%`, background: gradient,
+        transition: "width 0.8s cubic-bezier(0.4,0,0.2,1)", paddingRight: 12, paddingLeft: 12
+      }}>
+        {children}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ background: "#fff", borderRadius: 20, padding: 24, border: "1px solid #e2e8f0", boxShadow: "0 4px 24px rgba(0,0,0,0.05)", marginBottom: 24 }}>
+      <p style={{ textAlign: "center", fontSize: 11, fontWeight: 800, letterSpacing: 2, color: "#94a3b8", textTransform: "uppercase", marginBottom: 20 }}>
+        תחזית ל-5 שנים
+      </p>
+
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>🏠 הון נצבר בנכס</span>
+          <span style={{ fontSize: 14, fontWeight: 800, color: "#059669" }}>{fmt(total)}</span>
+        </div>
+        <Bar pct={(total / maxVal) * 100} gradient="linear-gradient(90deg, #059669, #34d399)">
+          <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.95)", whiteSpace: "nowrap" }}>
+            קרן {fmt(equity5yr)} + עליית ערך {fmt(appreciation5yr)}
+          </span>
+        </Bar>
+      </div>
+
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>💸 שכירות שהלכה לפח</span>
+          <span style={{ fontSize: 14, fontWeight: 800, color: "#ef4444" }}>{fmt(rent5yr)}</span>
+        </div>
+        <Bar pct={(rent5yr / maxVal) * 100} gradient="linear-gradient(90deg, #ef4444, #f87171)">
+          <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.85)", whiteSpace: "nowrap", marginRight: "auto" }}>₪0 נשאר לך</span>
+        </Bar>
+      </div>
+
+      <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 14, padding: 14, textAlign: "center" }}>
+        <p style={{ fontSize: 13, color: "#065f46", fontWeight: 700, lineHeight: 1.7, margin: 0 }}>
+          ✨ ב-5 שנים של בעלות תצברו <span style={{ color: "#059669", textDecoration: "underline" }}>{fmt(total)}</span>
+          {" "}במקום לאבד <span style={{ color: "#ef4444" }}>{fmt(rent5yr)}</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ──────────── LeadModal ────────────
+function LeadModal({ onClose, data }) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const inputStyle = {
+    width: "100%", padding: "14px 16px", background: "#f8fafc",
+    border: "1px solid #e2e8f0", borderRadius: 12, fontSize: 15,
+    textAlign: "right", outline: "none", boxSizing: "border-box",
+    fontFamily: "inherit"
+  };
+
+  const handleSubmit = async () => {
+    if (!name.trim() || !phone.trim()) return;
+    setLoading(true);
+    try {
+      const response = await fetch('/api/submit-lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name, 
+          phone, 
+          property_value: data.propertyValue,
+          shared_income: data.income,
+          loan_repayments: data.loans,
+          rent: data.rent
+        })
+      });
+      if (response.ok) {
+        setSubmitted(true);
+      } else {
+        alert("אירעה שגיאה בשליחת הנתונים. נסו שוב.");
+      }
+    } catch (error) {
+      console.error("Error submitting lead:", error);
+      alert("חיבור לשרת נכשל.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onClose}>
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(6px)" }} />
+      <div className="modal-anim" onClick={(e) => e.stopPropagation()} style={{
+        position: "relative", background: "#fff", borderRadius: 24, maxWidth: 420, width: "100%",
+        padding: 32, boxShadow: "0 25px 60px rgba(0,0,0,0.25)"
+      }}>
+        <button onClick={onClose} style={{
+          position: "absolute", top: 14, left: 14, width: 34, height: 34, borderRadius: "50%",
+          background: "#f1f5f9", border: "none", cursor: "pointer", fontSize: 18,
+          display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b"
+        }}>✕</button>
+
+        {!submitted ? (
+          <div style={{ textAlign: "center" }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center",
+              margin: "0 auto 16px", fontSize: 30,
+              background: "linear-gradient(135deg, #0f4c81, #059669)", color: "#fff",
+              boxShadow: "0 8px 20px rgba(5,150,105,0.3)"
+            }}>🏠</div>
+            <h3 style={{ fontSize: 22, fontWeight: 900, color: "#1e293b", marginBottom: 4 }}>בואו נבנה לכם תוכנית</h3>
+            <p style={{ fontSize: 14, color: "#64748b", marginBottom: 24 }}>
+              לנכס בשווי <span style={{ fontWeight: 800, color: "#059669" }}>{fmt(data.propertyValue)}</span>
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <input type="text" placeholder="שם מלא" value={name} onChange={(e) => setName(e.target.value)}
+                style={inputStyle}
+                onFocus={(e) => e.target.style.borderColor = "#10b981"}
+                onBlur={(e) => e.target.style.borderColor = "#e2e8f0"} />
+              <input type="tel" placeholder="מספר טלפון" value={phone} onChange={(e) => setPhone(e.target.value)}
+                style={inputStyle}
+                onFocus={(e) => e.target.style.borderColor = "#10b981"}
+                onBlur={(e) => e.target.style.borderColor = "#e2e8f0"} />
+              <button onClick={handleSubmit} disabled={loading}
+                style={{
+                  width: "100%", padding: 16, border: "none", borderRadius: 14, fontSize: 17, fontWeight: 800,
+                  color: "#fff", cursor: "pointer", fontFamily: "inherit",
+                  background: loading ? "#94a3b8" : "linear-gradient(135deg, #0f4c81, #059669)",
+                  boxShadow: "0 8px 24px rgba(5,150,105,0.3)",
+                  transition: "transform 0.2s"
+                }}>
+                {loading ? "שולח..." : "שלחו לי תוכנית מותאמת אישית ←"}
+              </button>
+            </div>
+            <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 12, lineHeight: 1.6 }}>
+              ללא התחייבות · שיחת ייעוץ חינם<br />מומחי משכנתאות מבית Rent or Buy
+            </p>
+          </div>
+        ) : (
+          <div style={{ textAlign: "center", padding: "24px 0" }}>
+            <div style={{ fontSize: 52, marginBottom: 16 }}>✅</div>
+            <h3 style={{ fontSize: 22, fontWeight: 900, color: "#1e293b", marginBottom: 8 }}>תודה רבה, {name}! 🎉</h3>
+            <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.8 }}>
+              נחזור אליך תוך 24 שעות עם תוכנית<br />מותאמת אישית לרכישת הנכס שלך.
+            </p>
+            <button onClick={onClose} style={{
+              marginTop: 24, padding: "12px 36px", background: "#f1f5f9", border: "none",
+              borderRadius: 12, fontWeight: 700, color: "#475569", cursor: "pointer", fontSize: 14, fontFamily: "inherit"
+            }}>סגור</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// ──────────── MAIN APP ────────────────
+// ═══════════════════════════════════════
+function App() {
+  const [rent, setRent] = useState(5000);
+  const [equity, setEquity] = useState(300000);
+  const [income, setIncome] = useState(18000);
+  const [loans, setLoans] = useState(0);
+  const [showModal, setShowModal] = useState(false);
+  const [hoverCta, setHoverCta] = useState(false);
+
+  const disposableIncome = Math.max(income - loans, 0);
+  const maxAllowed = Math.floor(disposableIncome * MAX_RATIO);
+  const overRatio = rent > maxAllowed;
+  const remainingAllowance = Math.max(maxAllowed - rent, 0);
+
+  const maxLoan = calcMaxLoan(rent);
+  const propertyValue = maxLoan + equity;
+  const ltv = propertyValue > 0 ? (maxLoan / propertyValue) : 0;
+  const ratio = disposableIncome > 0 ? ((rent / disposableIncome) * 100).toFixed(0) : 0;
+
+  const eq5 = calcEquity5yr(maxLoan, rent, 5);
+  const rent5yr = rent * 60;
+  const appr5 = Math.round(propertyValue * (Math.pow(1 + ANNUAL_APPRECIATION, 5) - 1));
+
+  return (
+    <div style={{ minHeight: "100vh", position: "relative" }}>
+
+      {/* ═══ HERO ═══ */}
+      <header style={{ paddingTop: 44, paddingBottom: 28, textAlign: "center", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -80, left: -80, width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, #10b981, transparent)", opacity: 0.06 }} />
+        <div style={{ position: "absolute", top: -40, right: -40, width: 220, height: 220, borderRadius: "50%", background: "radial-gradient(circle, #0f4c81, transparent)", opacity: 0.05 }} />
+
+        <div className="fade-in-1" style={{ maxWidth: 500, margin: "0 auto", padding: "0 20px", position: "relative" }}>
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.75)",
+            backdropFilter: "blur(8px)", borderRadius: 50, padding: "7px 18px", marginBottom: 18,
+            border: "1px solid rgba(226,232,240,0.5)", fontSize: 12, fontWeight: 700, color: "#64748b"
+          }}>
+            ✨ מחשבון חכם · מותאם לתקנות בנק ישראל
+          </div>
+
+          <h1 className="fade-in-2" style={{
+            fontSize: "clamp(30px, 8vw, 40px)", fontWeight: 900, lineHeight: 1.15, marginBottom: 14,
+            background: "linear-gradient(135deg, #0c3d6b 30%, #059669 100%)",
+            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent"
+          }}>
+            הפסיקו לשלם<br />למשכיר שלכם
+          </h1>
+        </div>
+      </header>
+
+      {/* ═══ CONTENT ═══ */}
+      <main style={{ maxWidth: 500, margin: "0 auto", padding: "0 20px 80px" }}>
+
+        {/* Slider Card */}
+        <div className="fade-in-4" style={{
+          background: "rgba(255,255,255,0.92)", backdropFilter: "blur(20px)", borderRadius: 24,
+          boxShadow: "0 8px 40px rgba(0,0,0,0.06)", border: "1px solid rgba(255,255,255,0.8)", padding: "28px 24px"
+        }}>
+          <Slider label="שכר דירה נוכחי" emoji="💰" value={rent} onChange={setRent} min={2000} max={15000} step={100} />
+          <Slider label="הכנסה משותפת נטו" emoji="👛" value={income} onChange={setIncome} min={8000} max={60000} step={500} />
+          <Slider label="החזר הלוואות שוטפות" emoji="💳" value={loans} onChange={setLoans} min={0} max={10000} step={100} />
+          <Slider label="הון עצמי זמין" emoji="🏦" value={equity} onChange={setEquity} min={50000} max={2000000} step={10000} />
+
+          {/* Disposable Income Info */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f8fafc", borderRadius: 14, padding: "14px 16px", marginBottom: 16 }}>
+            <div>
+               <p style={{ fontSize: 11, color: "#64748b", margin: 0 }}>הכנסה פנויה</p>
+               <p style={{ fontSize: 15, fontWeight: 900, color: "#1e293b", margin: 0 }}>{fmt(disposableIncome)}</p>
+            </div>
+            <div style={{ textAlign: "left" }}>
+               <p style={{ fontSize: 11, color: "#64748b", margin: 0 }}>יחס החזר</p>
+               <p style={{ fontSize: 15, fontWeight: 900, color: overRatio ? "#ef4444" : "#059669", margin: 0 }}>{ratio}%</p>
+            </div>
+          </div>
+
+          {/* Warning / Allowance */}
+          {overRatio ? (
+            <div style={{ background: "#fef2f2", border: "1px solid #fee2e2", borderRadius: 16, padding: 16, display: "flex", gap: 12, alignItems: "flex-start" }}>
+              <span style={{ fontSize: 24, flexShrink: 0 }}>🛑</span>
+              <div style={{ textAlign: "right" }}>
+                <p style={{ fontSize: 14, fontWeight: 800, color: "#991b1b", marginBottom: 6 }}>מגבלת תקנות בנק ישראל</p>
+                <p style={{ fontSize: 13, color: "#b91c1c", lineHeight: 1.6, margin: 0 }}>
+                  בהתאם להכנסות שלכם, ההחזר החודשי **לא יכול לעבור {fmt(maxAllowed)}** (35% מההכנסה הפנויה).
+                  <br />שכר הדירה הנוכחי שלכם ({fmt(rent)}) חורג מהמגבלה הבנקאית.
+                </p>
+              </div>
+            </div>
+          ) : (
+             <div style={{ background: "#f0fdf4", border: "1px solid #dcfce7", borderRadius: 16, padding: 16, display: "flex", gap: 12, alignItems: "flex-start" }}>
+              <span style={{ fontSize: 24, flexShrink: 0 }}>✅</span>
+              <div style={{ textAlign: "right" }}>
+                <p style={{ fontSize: 14, fontWeight: 800, color: "#166534", marginBottom: 4 }}>אישור עקרוני (יחס החזר)</p>
+                <p style={{ fontSize: 13, color: "#15803d", lineHeight: 1.6, margin: 0 }}>
+                  הבנק מאפשר החזר מקסימלי של **{fmt(maxAllowed)}**. 
+                  <br />יש לכם "מרווח" של עוד **{fmt(remainingAllowance)}** מעבר לשכר הדירה.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ═══ RESULT ═══ */}
+        <div style={{ marginTop: 36, textAlign: "center" }}>
+          <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: 3, color: "#94a3b8", textTransform: "uppercase", marginBottom: 8 }}>
+            שווי הנכס שתוכלו לרכוש (לפי שכר הדירה)
+          </p>
+          <div style={{
+            fontSize: "clamp(42px, 12vw, 56px)", fontWeight: 900, letterSpacing: "-2px", marginBottom: 6,
+            background: "linear-gradient(135deg, #0c3d6b, #059669)",
+            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent"
+          }}>
+            <AnimatedNumber value={propertyValue} />
+          </div>
+          <p style={{ fontSize: 14, color: "#94a3b8", marginBottom: 30 }}>
+            משכנתא <strong>{fmt(maxLoan)}</strong> + הון עצמי <strong>{fmt(equity)}</strong>
+          </p>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 28 }}>
+            {[
+              { emoji: "🏠", label: "החזר מותר", val: fmt(maxAllowed), sub: "35% מהכנסה" },
+              { emoji: "📊", label: "הכנסה פנויה", val: fmt(disposableIncome), sub: "נטו פחות חוב" },
+              { emoji: "📈", label: "מימון", val: `${(ltv * 100).toFixed(0)}%`, sub: "עד 75%" },
+            ].map((c, i) => (
+              <div key={i} style={{
+                background: "rgba(255,255,255,0.88)", backdropFilter: "blur(8px)", borderRadius: 16,
+                padding: "16px 10px", border: "1px solid #f1f5f9", textAlign: "center"
+              }}>
+                <div style={{ fontSize: 24, marginBottom: 6 }}>{c.emoji}</div>
+                <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: "#94a3b8", textTransform: "uppercase", marginBottom: 3 }}>{c.label}</p>
+                <p style={{ fontSize: 18, fontWeight: 900, color: "#1e293b", margin: 0 }}>{c.val}</p>
+                <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 3, margin: 0 }}>{c.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          <EquityChart equity5yr={eq5} rent5yr={rent5yr} appreciation5yr={appr5} />
+
+          <button
+            onClick={() => setShowModal(true)}
+            onMouseEnter={() => setHoverCta(true)}
+            onMouseLeave={() => setHoverCta(false)}
+            style={{
+              width: "100%", padding: "20px 16px", border: "none", borderRadius: 18,
+              fontSize: 19, fontWeight: 900, color: "#fff", cursor: "pointer",
+              fontFamily: "inherit",
+              background: "linear-gradient(135deg, #0c3d6b, #059669)",
+              boxShadow: hoverCta ? "0 18px 44px rgba(5,150,105,0.4)" : "0 12px 32px rgba(5,150,105,0.25)",
+              transform: hoverCta ? "scale(1.02)" : "scale(1)",
+              transition: "transform 0.2s, box-shadow 0.2s"
+            }}
+          >
+            🏠 בנו לי תוכנית לרכישת הנכס הזה ←
+          </button>
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer style={{ textAlign: "center", paddingBottom: 24 }}>
+        <p style={{ fontSize: 10, color: "#cbd5e1" }}>
+          © Rent or Buy · המחשבון מהווה הערכה בלבד ותואם את תקנות בנק ישראל
+        </p>
+      </footer>
+
+      {showModal && <LeadModal onClose={() => setShowModal(false)} data={{ propertyValue, income, loans, rent }} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

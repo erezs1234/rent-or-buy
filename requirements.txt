@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+pydantic
+sqlite3
+streamlit
+pandas

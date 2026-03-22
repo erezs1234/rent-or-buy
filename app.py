@@ -38,7 +38,7 @@ st.markdown("""
         text-align: center !important;
         width: 100%;
         margin-top: 15px;
-        margin-bottom: 15px;
+        margin-bottom: 25px;
         font-weight: 700;
         font-size: 1.8rem;
     }
@@ -55,42 +55,23 @@ st.markdown("""
         display: flex;
     }
 
-    /* Input boxes - ensuring strict RTL labels */
-    div[data-testid="stNumberInput"] label {
-        text-align: right !important;
-        width: 100%;
-        display: block;
-    }
-
-    .warning-box, .success-box {
+    /* Container boxes */
+    .scenario-box {
         border-radius: 12px;
-        padding: 16px;
+        padding: 20px;
         margin-bottom: 20px;
         text-align: right;
-        font-size: 0.95rem;
-        line-height: 1.6;
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
     }
-    .warning-box {
-        background-color: #fef2f2;
-        border: 1px solid #fee2e2;
-        color: #991b1b;
-    }
-    .success-box {
-        background-color: #f0fdf4;
-        border: 1px solid #dcfce7;
-        color: #166534;
-    }
+    .highlight-blue { border-right: 5px solid #0c3d6b; }
+    .highlight-green { border-right: 5px solid #059669; background-color: #f0fdf4; }
 
-    /* Improve column layout on mobile to stay in rows */
+    /* Fix column layout on mobile to stay in rows */
     [data-testid="column"] {
         width: calc(50% - 1rem) !important;
         flex: 1 1 calc(50% - 1rem) !important;
         min-width: calc(50% - 1rem) !important;
-    }
-    
-    @media (max-width: 640px) {
-        /* Optional: adjust font sizes for very small screens */
-        .main-header { font-size: 1.6rem; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -100,10 +81,11 @@ def fmt(n):
     return f"₪{int(n):,.0f}"
 
 def calc_max_loan(mp):
-    annual_rate = 0.045
+    annual_rate = 0.045 # Average rate
     monthly_rate = annual_rate / 12
     total_months = 30 * 12
     if mp <= 0: return 0
+    # Mortgage calculation formula (standard)
     return mp * ((1 - (1 + monthly_rate)**-total_months) / monthly_rate)
 
 def init_db():
@@ -126,69 +108,71 @@ init_db()
 # Main UI
 st.markdown('<h1 class="main-header">הפסיקו לשלם לשכירות</h1>', unsafe_allow_html=True)
 
-# Input Section - Forced 2-column layout for mobile
+# Input Section
 with st.container():
-    # First Row
     col1, col2 = st.columns(2)
     with col1:
-        rent = st.number_input("💰 שכר דירה", min_value=0, value=5000, step=100)
+        rent = st.number_input("💰 שכר דירה נוכחי", min_value=0, value=5000, step=100)
     with col2:
-        equity = st.number_input("🏦 הון עצמי", min_value=0, value=300000, step=10000)
+        equity = st.number_input("🏦 הון עצמי זמין", min_value=0, value=300000, step=10000)
     
-    # Second Row
     col3, col4 = st.columns(2)
     with col3:
-        income = st.number_input("💵 הכנסה נטו", min_value=0, value=18000, step=500)
+        income = st.number_input("💵 הכנסה משותפת נטו", min_value=0, value=18000, step=500)
     with col4:
         loans = st.number_input("💳 החזר הלוואות", min_value=0, value=0, step=100)
 
 # Calculations
 disposable_income = max(income - loans, 0)
 max_allowed_repayment = int(disposable_income * 0.35)
-over_ratio = rent > max_allowed_repayment
-remaining_allowance = max(max_allowed_repayment - rent, 0)
 
-max_loan = calc_max_loan(rent)
-property_value = max_loan + equity
-ratio = (rent / disposable_income * 100) if disposable_income > 0 else 0
+# Scenario 1: Same as Rent
+mortgage_at_rent = calc_max_loan(rent)
+property_at_rent = mortgage_at_rent + equity
+
+# Scenario 2: Max Allowed (35%)
+mortgage_at_max = calc_max_loan(max_allowed_repayment)
+property_at_max = mortgage_at_max + equity
 
 st.divider()
 
-# Results Header Centered
+# Results Section
 st.markdown('<h2 class="centered-header">תוצאות החישוב</h2>', unsafe_allow_html=True)
 
-# Results Row 1
-res_col1, res_col2 = st.columns(2)
-res_col1.metric("שווי נכס אפשרי", fmt(property_value))
-res_col2.metric("יחס החזר", f"{ratio:.0f}%")
+# --- Scenario 1 Section ---
+st.markdown(f"""
+<div class="scenario-box highlight-blue">
+    <h3 style="margin-top:0;">🏠 קנייה בהחזר זהה לשכירות</h3>
+    <p>אם תשתמשו ב-<b>{fmt(rent)}</b> שאתם משלמים היום לטובת משכנתא:</p>
+    <div style="display:flex; justify-content:space-around; text-align:center;">
+        <div><b>סכום המשכנתא</b><br>{fmt(mortgage_at_rent)}</div>
+        <div><b>שווי דירה אפשרית</b><br><span style="font-size:1.2rem; color:#0c3d6b; font-weight:700;">{fmt(property_at_rent)}</span></div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-# Results Row 2 (Full Width)
-st.metric("החזר מרבי מותר (35% מהפנויה)", fmt(max_allowed_repayment))
-
-if over_ratio:
+# --- Scenario 2 Section (Only if income allows more) ---
+if max_allowed_repayment > rent:
     st.markdown(f"""
-    <div class="warning-box">
-        <b>🛑 חריגה ממגבלת בנק ישראל</b><br>
-        הכנסה פנויה: {fmt(disposable_income)} (הכנסות פחות הלוואות)<br>
-        ההחזר המרבי המותר (35%) הוא <b>{fmt(max_allowed_repayment)}</b>.<br>
-        שכר הדירה הנוכחי ({fmt(rent)}) חורג מהמגבלה.
+    <div class="scenario-box highlight-green">
+        <h3 style="margin-top:0;">🚀 השתדרגות בהתאם ליכולת ההחזר</h3>
+        <p>בנק ישראל מאפשר לכם החזר של עד <b>{fmt(max_allowed_repayment)}</b> (35% מההכנסה הפנויה).</p>
+        <div style="display:flex; justify-content:space-around; text-align:center;">
+            <div><b>סכום המשכנתא</b><br>{fmt(mortgage_at_max)}</div>
+            <div><b>שווי דירה מקסימלי</b><br><span style="font-size:1.4rem; color:#059669; font-weight:900;">{fmt(property_at_max)}</span></div>
+        </div>
+        <p style="margin-top:10px; font-size:0.9rem;"><i>* הכנסה פנויה: {fmt(disposable_income)} (הכנסות פחות הלוואות)</i></p>
     </div>
     """, unsafe_allow_html=True)
-else:
+elif max_allowed_repayment < rent:
     st.markdown(f"""
-    <div class="success-box">
-        <b>✅ תואם מגבלות בנק ישראל</b><br>
-        הכנסה פנויה: {fmt(disposable_income)} (הכנסות פחות הלוואות)<br>
-        הבנק מאפשר החזר של עד <b>{fmt(max_allowed_repayment)}</b>.<br>
-        יש לכם "מרווח" של <b>{fmt(remaining_allowance)}</b> מעבר לשכירות.
+    <div class="scenario-box" style="border-right: 5px solid #991b1b; background-color: #fef2f2; color:#991b1b;">
+        <b>⚠️ שימו לב:</b> שכר הדירה הנוכחי שלכם ({fmt(rent)}) גבוה מהחזר המשכנתא המקסימלי שהבנק יאפשר לכם ({fmt(max_allowed_repayment)}) בהתאם להכנסות.
     </div>
     """, unsafe_allow_html=True)
 
-# Equity Forecast
-st.subheader("📈 תחזית ל-5 שנים")
-rent_lost = rent * 60
-appreciation = int(property_value * 0.15)
-st.info(f"בעוד 5 שנים, תצברו הון מוערך של {fmt(appreciation)} רק מעליית ערך הנכס (15%), במקום לאבד {fmt(rent_lost)} על שכר דירה.")
+# Summary Message
+st.info(f"בעוד 5 שנים, תצברו הון מוערך של כ-{fmt(property_at_rent * 0.15)} רק מעליית ערך הנכס (15%), במקום לאבד {fmt(rent * 60)} על שכר דירה.")
 
 # Lead Form
 st.divider()
@@ -203,7 +187,7 @@ with st.form("lead_form"):
             conn = sqlite3.connect("leads.db")
             c = conn.cursor()
             c.execute("INSERT INTO leads (name, phone, property_value, shared_income, loan_repayments, rent) VALUES (?, ?, ?, ?, ?, ?)",
-                      (name, phone, float(property_value), float(income), float(loans), float(rent)))
+                      (name, phone, float(property_at_max), float(income), float(loans), float(rent)))
             conn.commit()
             conn.close()
             st.success(f"תודה {name}! הפרטים נשמרו. נחזור אליך תוך 24 שעות.")

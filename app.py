@@ -291,6 +291,8 @@ elif st.session_state.step == 3:
             st.caption(f"סנכרון ל-ActiveTrail: {d['sync_msg']}")
         else:
             st.warning(f"שים לב: הפרטים נשמרו במערכת שלנו אך חלה שגיאה בסנכרון ל-ActiveTrail: {d['sync_msg']}")
+    
+    if st.button("חישוב מחדש ↺"):
         st.session_state.step = 1
         st.session_state.data = {}
         st.rerun()
